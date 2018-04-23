@@ -1,0 +1,8 @@
+#先定义一个函数fmin，v为要求的矩阵或值。
+function f= fmin(v)
+global  ic t
+ic_=mean(ic);
+f=(v*ic_')/sqrt(v*t*v');
+end
+
+[x fval exitflag]=fmincon('fmin',ones(1,14))
