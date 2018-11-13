@@ -1,0 +1,9 @@
+function datas=pca(aa)
+[~,factor_num]=size(aa);
+for i=1:length(factor_num)
+    aa(:,i)=aa(:,i)-mean(aa(:,i));
+end
+c=cov(aa);
+[tzxl,tzz]=eig(c);
+pos=sum(tzz)==max(sum(tzz));
+datas=aa*tzxl(:,pos);
