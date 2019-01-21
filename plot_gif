@@ -1,0 +1,9 @@
+%matlab 绘制动态图
+h=plot(o,o)
+start_date=1;
+for j=1:1000
+    mm(j)=j^2;
+    set(h,'xdata',[start_date:j],'ydata',mm(start_date:j));
+    drawnow  %现在就画
+    pause(0.01)  %画完当前，停留0.01秒
+end
