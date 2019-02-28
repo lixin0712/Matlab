@@ -99,3 +99,15 @@ v3 = [blkblock blkblock blkblock violin];
 s = c1(1:length(v1))+v1+v2+v3;
 s = s/max(s);
 sound(s,fs);
+
+
+
+
+
+%% matlab生成笛卡尔集
+%eg:r=cartProd([1:10],4)
+function r = cartProd(x,n)
+  [r{1:n}] = ndgrid(x);
+  r = reshape(cat(n,r{:}),[],n);
+
+
