@@ -1,0 +1,212 @@
+% load('E:\lx\打板策略\Allmatrix.mat')
+% Allmatrix=Allmatrix2;
+% StockList={};
+% for i=1:length(stocklist)
+%     if str2double(stocklist{i})>600000
+%         StockList{i,2}= ['SH',stocklist{i}];
+% 
+%     else
+%         StockList{i,2}= ['SZ',stocklist{i}];
+%     end
+%      StockList{i,3}= stocklist{i};
+% end
+% clearvars -except Allmatrix StockList
+% all_date=Allmatrix(:,1,1);
+
+
+
+
+
+
+
+
+% load('\\198.16.102.86\StockData\All_stockdata_Fin_TTM.mat','Allmatrix','StockList');
+
+clearvars -except Allmatrix StockList
+all_date=Allmatrix(:,1,1);
+
+
+%%
+%  前2，3日每日涨幅大于7个点，前1日涨幅为负.前1日成交量小于前2日成交量，前2日成交量小于2倍前3日成交量
+%  前1日收盘价相对（前2日收盘价和前1日最高价的最大值）跌幅小于7个点
+%  距离上市日期超过250天，当天不是一字板，
+%  前十日内没有过交易
+%  前2日收盘价小于前三十日最低收盘价的1.4倍
+% 前二十天中停牌天数小于10天
+% 满足条件的股票开盘买入
+
+% 昨日上证跌幅大于两个点，或信号出现次数大于10笔，当天不买入任何股票。
+% 每天计算总资产的一半和可用资金的最小值作为当天的交易资金，按当天交易信号等额分配，每只最多1/2
+% 平仓一，第二天收盘卖出，如果当日收盘涨跌幅大于9.5个点，持有至下一日收盘卖出
+
+%平仓二，从开仓日算起，若个股五日线大于10日线，持有至当日收盘大于买入价一个点再平仓，或持有至五日线小于十日线再平仓，最多持有四天。
+
+
+
+
+%初始参数设置，暂时不用的条件暂不写入或设为非常宽松
+sn=2;%第sn个板开始
+en=6;%第en个板之后不做
+cc0=1.07;
+start_date=max(find(all_date<=20190104));%开始日期
+end_date=length(all_date);%截止日期
+conn = database('stock_data','sa','123456','com.microsoft.sqlserver.jdbc.SQLServerDriver','jdbc:sqlserver://198.16.102.88:1433;database=stock_data');
+szzs =fetch(conn,['select tradingday,c from wind_index where code=''000001'' order by tradingday']);
+for i=1:length(StockList)
+    if ~isempty(find(Allmatrix(:,6,i)~=0))
+        first_date(i)=min(find(Allmatrix(:,6,i)~=0));
+    else
+        first_date(i)=99999;
+    end
+end
+
+all_record={};mm=[];error_record={};allrecord=[];error_record2={};
+cc1=1;cc2=2;cc3=0.07;limit1=1.2;
+buy_date=zeros(1,length(StockList));
+m(1:start_date)=0;
+am(1:start_date)=2000000;
+holding_pos=zeros(1,length(StockList));
+holding_num=zeros(1,length(StockList));
+for j=start_date-20:end_date
+    hn(j)=length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)>=1.095))-length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)<=0.905));
+end
+
+
+for cc0=1.07
+    record={};
+    m(1:start_date)=0;
+    am(1:start_date)=1000000;
+    holding_pos=zeros(1,length(StockList));
+    holding_num=zeros(1,length(StockList));
+    buy_date=zeros(1,length(StockList));
+    
+    for j=start_date:end_date
+        szzs_pos=find([szzs{:,1}]==all_date(j));
+        holding_pos(find(holding_pos~=0))=holding_pos(find(holding_pos~=0))+1;
+        am(j)=am(j-1);
+        all_date(j)
+        szzs_date=find([szzs{:,1}]==all_date(j));
+        
+        if szzs{szzs_date-1,2}/szzs{szzs_date-2,2}>0.98
+            %         if all_date(j)<20150901||all_date(j)>20151001
+            %统计连扳数量
+            pos111=1:length(StockList);
+            for iii=1:en
+                pos111=intersect(pos111,find(Allmatrix(j-1-iii,5,:)./Allmatrix(j-1-iii-1,5,:)>cc0));%
+                if iii==sn
+                    pos222=pos111;
+                end
+            end
+            pos4=setdiff(pos222,pos111);%连板数量大于等于sn小于en
+            
+            
+            pos5=find(j-first_date>250);%距离第一个交易日超过250天
+            pos6=find(Allmatrix(j,3,:)>Allmatrix(j,4,:));%不是一字板
+            pos8=intersect2({union(find(Allmatrix(j-1,5,:)<Allmatrix(j-2,5,:)),find(Allmatrix(j-1,5,:)<Allmatrix(j-1,2,:))),find(Allmatrix(j-1,6,:)<cc1*Allmatrix(j-2,6,:)),find(Allmatrix(j-2,6,:)<cc2*Allmatrix(j-3,6,:))});
+            %昨日涨跌幅为负，昨日成交量小于前日成交量的cc1倍，前日成交量小于前前日成交量的cc2倍
+            pos10=find(Allmatrix(j-1,5,:)./max(Allmatrix(j-2,5,:),Allmatrix(j-1,3,:))>(1-cc3));%昨日最低跌幅小于cc3
+            pos12=find(buy_date<j-10);%前十天有过信号的不再交易
+            
+            pos11=find(max(Allmatrix(j-30:j-2,5,:))<1.4*min(Allmatrix(j-30:j-2,5,:)));%前日收盘价小于前三十日最低收盘价的1.4倍
+            pos0=intersect2({pos4,pos5,pos6,pos8,pos10,pos11,pos12});
+            td_record=[];
+            for i=pos0'
+                if ~isempty(i)&&length(find(Allmatrix(j-20:j-1,6,i)==0))<10&&holding_pos(i)==0
+                    td_record=[td_record,i];
+                    record=[record;{all_date(j),StockList{i,3},Allmatrix(j,5,i)/Allmatrix(j-1,5,i)-1,Allmatrix(j+1,5,i)/Allmatrix(j,2,i)-1,length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)>=1.095)),length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)<=0.905))}]; 
+                end
+                
+                
+                
+            end
+            buy_m=floor(min(am(j),(am(j-1)+m(j-1))/2)/max(2,length(td_record)));
+            if length(td_record)<10
+                for ii=td_record
+                    buy_price(ii)=Allmatrix(j,2,ii);%当天开盘价买入
+                    buy_num(ii)=floor(buy_m/buy_price(ii)/100)*100;
+                    buy_date(i)=j;
+                    holding_num(ii)=buy_num(ii);
+                    am(j)=am(j)-buy_price(ii)*buy_num(ii);
+                    holding_pos(ii)=1;%当日持仓标记为1
+                    sale_price(ii)=0;
+                    all_record=[all_record;{StockList{ii,2},all_date(j),buy_price(ii),buy_num(ii),buy_price(ii)*buy_num(ii),'买',0}];
+                end
+            end
+        end
+        
+        for ii=find(holding_pos>1)
+            
+            if Allmatrix(j,5,ii)/buy_price(ii)>limit1
+                sale_price(ii)=buy_price(ii)*limit1;
+                sale_num(ii)=buy_num(ii);
+                holding_num(ii)=0;
+                am(j)=am(j)+sale_price(ii)*sale_num(ii);
+                holding_date=holding_pos(ii)-1;
+                holding_pos(ii)=0; 
+                all_record=[all_record;{StockList{ii,2},all_date(j),sale_price(ii),-1*sale_num(ii),sale_price(ii)*sale_num(ii),'卖',sale_price(ii)/buy_price(ii)-1}];
+                
+            elseif  (Allmatrix(j,5,ii)>1.095*Allmatrix(j-1,5,ii))||Allmatrix(j,5,ii)<=0.905*Allmatrix(j-1,5,ii)
+                error_record=[error_record;{StockList{ii,2},all_date(j)}];
+            elseif mean(Allmatrix(j-5:j-1,5,ii))>=mean(Allmatrix(j-10:j-1,5,ii))&&(Allmatrix(j,5,ii)>1.01*buy_price(ii)||holding_pos(ii)>=5)
+                sale_price(ii)=Allmatrix(j,5,ii)*0.997;
+                sale_num(ii)=buy_num(ii);
+                holding_num(ii)=0;
+                am(j)=am(j)+sale_price(ii)*sale_num(ii);
+                holding_date=holding_pos(ii)-1;
+                holding_pos(ii)=0;
+                all_record=[all_record;{StockList{ii,2},all_date(j),sale_price(ii),-1*sale_num(ii),sale_price(ii)*sale_num(ii),'卖',sale_price(ii)/buy_price(ii)-1}];
+               
+            elseif mean(Allmatrix(j-5:j-1,5,ii))<mean(Allmatrix(j-10:j-1,5,ii))
+                sale_price(ii)=Allmatrix(j,5,ii)*0.997;
+                sale_num(ii)=buy_num(ii);
+                holding_num(ii)=0;
+                am(j)=am(j)+sale_price(ii)*sale_num(ii);
+                holding_date=holding_pos(ii)-1;
+                holding_pos(ii)=0;
+                all_record=[all_record;{StockList{ii,2},all_date(j),sale_price(ii),-1*sale_num(ii),sale_price(ii)*sale_num(ii),'卖',sale_price(ii)/buy_price(ii)-1}];
+            end
+            
+            %% 绘制每笔交易附近的K线图
+%             if holding_num(ii)==0
+%                 close all
+%                 data1=reshape(Allmatrix(j-40:j+40,[3,4,5,2],ii),81,4);
+%                 
+%                 red=find(data1(:,3)>=data1(:,4));
+%                 data2=zeros(81,4);data2(red,:)=data1(red,:);
+%                 candle(data2(:,1),data2(:,2),data2(:,3),data2(:,4),'r');
+%                 
+%                 green=find(data1(:,3)<data1(:,4));
+%                 data3=zeros(81,4);data3(green,:)=data1(green,:);
+%                 hold on
+%                 candle(data3(:,1),data3(:,2),data3(:,3),data3(:,4),'g');
+%                 hold on
+%                 plot([41,41],[0,max(data1(:,1))])
+%                 hold on
+%                 plot([41-holding_date,41-holding_date],[0,max(data1(:,1))])
+%                 width=1500;%宽度，像素数
+%                 height=600;%高度
+%                 left=300;%距屏幕左下角水平距离
+%                 bottem=300;%距屏幕左下角垂直距离
+%                 set(gcf,'position',[left,bottem,width,height])
+%             end
+            
+        end
+        
+        
+        td_holding=find(holding_pos~=0);
+        if ~isempty(td_holding)
+            m(j)=sum(reshape(Allmatrix(j,5,td_holding),1,length(td_holding)).*holding_num(td_holding));
+        else
+            m(j)=0;
+        end
+        l(j)=length(td_record);
+        hold on
+        plot(am(start_date:j)+m(start_date:j));
+        drawnow
+    end
+    allrecord=[allrecord;[((am(end)+m(end))/(am(1)+m(1)))^(250/(end_date-start_date))-1,max_retreate2(m+am),(((am(end)+m(end))/(am(1)+m(1)))^(250/(end_date-start_date))-1)/max_retreate2(m+am),length(all_record)]];
+end
+
+
+
+
