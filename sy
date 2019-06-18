@@ -60,34 +60,42 @@ for i=1:length(StockList)
     end
 end
 
-all_record={};mm=[];error_record={};allrecord=[];error_record2={};
-cc1=1;cc2=2;cc3=0.07;limit1=1.2;
-buy_date=zeros(1,length(StockList));
-m(1:start_date)=0;
-am(1:start_date)=2000000;
-holding_pos=zeros(1,length(StockList));
-holding_num=zeros(1,length(StockList));
+%% 初始化变量，参数设置
+all_record={};%所有的成交记录
+mm=[];
+error_record={};%出错的成交记录
+allrecord=[];
+error_record2={};
+buy_date=zeros(1,length(StockList));%初始化每只股票最新的交易日期
+
+cc1=1;cc2=2;cc3=0.07;limit1=1.2;%限制条件的参数初始设置
+am(1:start_date)=2000000;%每天的可用金额
+m(1:start_date)=0;%每天的持仓金额
+holding_pos=zeros(1,length(StockList));%持仓股票的状态，0代表未持仓，1代表当日买入的股票，大于1表示持仓超过一天可以卖出
+holding_num=zeros(1,length(StockList));%每天持仓股票的数量
+
 for j=start_date-20:end_date
     hn(j)=length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)>=1.095))-length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)<=0.905));
 end
 
 
-for cc0=1.07
+for cc0=1.07%参数遍历寻优
     record={};
-    m(1:start_date)=0;
-    am(1:start_date)=1000000;
-    holding_pos=zeros(1,length(StockList));
-    holding_num=zeros(1,length(StockList));
-    buy_date=zeros(1,length(StockList));
+    m(1:start_date)=0;%换参数之后初始化持仓金额
+    am(1:start_date)=1000000;换参数之后初始化可用资金金额
+    holding_pos=zeros(1,length(StockList));换参数之后初始化每日持仓股票位置
+    holding_num=zeros(1,length(StockList));换参数之后初始化每日持仓股票数量
+    buy_date=zeros(1,length(StockList));换参数之后初始化每只股票最新的交易日期
     
     for j=start_date:end_date
-        szzs_pos=find([szzs{:,1}]==all_date(j));
-        holding_pos(find(holding_pos~=0))=holding_pos(find(holding_pos~=0))+1;
-        am(j)=am(j-1);
+        szzs_pos=find([szzs{:,1}]==all_date(j));%上证指数对应当前日期的位置
+        holding_pos(find(holding_pos~=0))=holding_pos(find(holding_pos~=0))+1;%所有股票的持仓状态加一
+        am(j)=am(j-1);更新当日的可用资金金额
         all_date(j)
         szzs_date=find([szzs{:,1}]==all_date(j));
         
-        if szzs{szzs_date-1,2}/szzs{szzs_date-2,2}>0.98
+        %% 买入模块
+        if szzs{szzs_date-1,2}/szzs{szzs_date-2,2}>0.98%昨日上证指数跌幅小于两个点，才会继续交易，否则当日不买入只卖出
             %         if all_date(j)<20150901||all_date(j)>20151001
             %统计连扳数量
             pos111=1:length(StockList);
@@ -108,20 +116,19 @@ for cc0=1.07
             pos12=find(buy_date<j-10);%前十天有过信号的不再交易
             
             pos11=find(max(Allmatrix(j-30:j-2,5,:))<1.4*min(Allmatrix(j-30:j-2,5,:)));%前日收盘价小于前三十日最低收盘价的1.4倍
-            pos0=intersect2({pos4,pos5,pos6,pos8,pos10,pos11,pos12});
+            pos0=intersect2({pos4,pos5,pos6,pos8,pos10,pos11,pos12});先通过标准化条件选出满足买入信号的股票池
             td_record=[];
             for i=pos0'
-                if ~isempty(i)&&length(find(Allmatrix(j-20:j-1,6,i)==0))<10&&holding_pos(i)==0
+                if ~isempty(i)&&length(find(Allmatrix(j-20:j-1,6,i)==0))<10&&holding_pos(i)==0%前二十天没有交易的天数小于十天，且当前没有持仓
                     td_record=[td_record,i];
                     record=[record;{all_date(j),StockList{i,3},Allmatrix(j,5,i)/Allmatrix(j-1,5,i)-1,Allmatrix(j+1,5,i)/Allmatrix(j,2,i)-1,length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)>=1.095)),length(find(Allmatrix(j-1,5,:)./Allmatrix(j-2,5,:)<=0.905))}]; 
                 end
                 
                 
-                
             end
             buy_m=floor(min(am(j),(am(j-1)+m(j-1))/2)/max(2,length(td_record)));
-            if length(td_record)<10
-                for ii=td_record
+            if length(td_record)<10%交易信号小于十个才会进行交易
+                for ii=td_record%对可交易的股票循环，计算交易数量和价格
                     buy_price(ii)=Allmatrix(j,2,ii);%当天开盘价买入
                     buy_num(ii)=floor(buy_m/buy_price(ii)/100)*100;
                     buy_date(i)=j;
@@ -134,10 +141,11 @@ for cc0=1.07
             end
         end
         
-        for ii=find(holding_pos>1)
+        %% 卖出模块
+        for ii=find(holding_pos>1)%对每个交易状态大于1的股票判断是否符合卖出条件
             
-            if Allmatrix(j,5,ii)/buy_price(ii)>limit1
-                sale_price(ii)=buy_price(ii)*limit1;
+            if Allmatrix(j,5,ii)/buy_price(ii)>limit1%当天收盘价大于买入价的limit1倍，按买入价的limit1倍卖出，手续费按千二计算
+                sale_price(ii)=buy_price(ii)*limit1*0.998;
                 sale_num(ii)=buy_num(ii);
                 holding_num(ii)=0;
                 am(j)=am(j)+sale_price(ii)*sale_num(ii);
@@ -145,9 +153,10 @@ for cc0=1.07
                 holding_pos(ii)=0; 
                 all_record=[all_record;{StockList{ii,2},all_date(j),sale_price(ii),-1*sale_num(ii),sale_price(ii)*sale_num(ii),'卖',sale_price(ii)/buy_price(ii)-1}];
                 
-            elseif  (Allmatrix(j,5,ii)>1.095*Allmatrix(j-1,5,ii))||Allmatrix(j,5,ii)<=0.905*Allmatrix(j-1,5,ii)
+            elseif  (Allmatrix(j,5,ii)>1.095*Allmatrix(j-1,5,ii))||Allmatrix(j,5,ii)<=0.905*Allmatrix(j-1,5,ii)%记录当日涨跌幅大于9.5个点的股票
                 error_record=[error_record;{StockList{ii,2},all_date(j)}];
             elseif mean(Allmatrix(j-5:j-1,5,ii))>=mean(Allmatrix(j-10:j-1,5,ii))&&(Allmatrix(j,5,ii)>1.01*buy_price(ii)||holding_pos(ii)>=5)
+            %五日线大于十日线且昨收超过买入价1%，或持仓超过五天，以当日收盘价全部卖出，手续费按千三计算
                 sale_price(ii)=Allmatrix(j,5,ii)*0.997;
                 sale_num(ii)=buy_num(ii);
                 holding_num(ii)=0;
@@ -156,7 +165,7 @@ for cc0=1.07
                 holding_pos(ii)=0;
                 all_record=[all_record;{StockList{ii,2},all_date(j),sale_price(ii),-1*sale_num(ii),sale_price(ii)*sale_num(ii),'卖',sale_price(ii)/buy_price(ii)-1}];
                
-            elseif mean(Allmatrix(j-5:j-1,5,ii))<mean(Allmatrix(j-10:j-1,5,ii))
+            elseif mean(Allmatrix(j-5:j-1,5,ii))<mean(Allmatrix(j-10:j-1,5,ii))%五日线小于十日线，以收盘价全部卖出，手续费按千三计算
                 sale_price(ii)=Allmatrix(j,5,ii)*0.997;
                 sale_num(ii)=buy_num(ii);
                 holding_num(ii)=0;
